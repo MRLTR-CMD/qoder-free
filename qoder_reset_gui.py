@@ -12,6 +12,7 @@ import shutil
 import hashlib
 import subprocess
 import webbrowser
+import platform
 from pathlib import Path
 from datetime import datetime
 
@@ -24,9 +25,76 @@ except ImportError:
     print("请运行: pip install PyQt5")
     sys.exit(1)
 
+def get_qoder_data_dir():
+    """获取Qoder数据目录的跨平台路径"""
+    system = platform.system()
+    home_dir = Path.home()
+    
+    if system == "Darwin":  # macOS
+        return home_dir / "Library/Application Support/Qoder"
+    elif system == "Windows":
+        # Windows 上 Qoder 数据存储在 AppData\Roaming\Qoder
+        appdata = os.getenv('APPDATA')
+        if appdata:
+            return Path(appdata) / "Qoder"
+        else:
+            return home_dir / "AppData/Roaming/Qoder"
+    elif system == "Linux":
+        # Linux 支持（如果需要的话）
+        return home_dir / ".config/Qoder"
+    else:
+        # 默认路径
+        return home_dir / "Qoder"
+
+def check_process_running(process_name):
+    """跨平台检查进程是否运行"""
+    system = platform.system()
+    
+    try:
+        if system == "Darwin" or system == "Linux":  # macOS/Linux
+            result = subprocess.run(['pgrep', '-f', process_name], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                pids = result.stdout.strip().split('\n')
+                return True, pids
+        
+        elif system == "Windows":
+            # 使用 tasklist 命令
+            result = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {process_name}*'], 
+                                  capture_output=True, text=True, shell=True)
+            if result.returncode == 0 and process_name.lower() in result.stdout.lower():
+                # 解析输出获取PID
+                lines = result.stdout.strip().split('\n')
+                pids = []
+                for line in lines:
+                    if process_name.lower() in line.lower():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            pids.append(parts[1])  # PID 在第二列
+                return True, pids
+        
+    except Exception as e:
+        # 备用方案：使用 psutil（如果安装了）
+        try:
+            import psutil
+            pids = []
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    if process_name.lower() in proc.info['name'].lower():
+                        pids.append(str(proc.info['pid']))
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            if pids:
+                return True, pids
+        except ImportError:
+            pass
+    
+    return False, []
+
 class QoderResetGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.system = platform.system()
         self.init_ui()
     
     def init_ui(self):
@@ -362,8 +430,7 @@ class QoderResetGUI(QMainWindow):
 
             # 2. 检查Qoder目录
             self.log("2. 检查Qoder目录...")
-            home_dir = Path.home()
-            qoder_support_dir = home_dir / "Library/Application Support/Qoder"
+            qoder_support_dir = get_qoder_data_dir()
 
             if qoder_support_dir.exists():
                 self.log(f"   ✅ Qoder目录存在")
@@ -435,11 +502,13 @@ class QoderResetGUI(QMainWindow):
 
                 self.log(f"   ✅ 发现 {chat_count}/{len(chat_dirs)} 个对话相关目录")
                 
-                # 7. 检查身份识别文件（新增）
+                # 7. 检查身份识别文件（更新）
                 self.log("7. 检查身份识别文件...")
                 identity_files = [
-                    "Network Persistent State", "Cookies", "SharedStorage", 
-                    "Trust Tokens", "TransportSecurity", "Preferences"
+                    "Local State",  # 包含加密密钥 - 新增
+                    "Preferences",
+                    "SharedStorage", 
+                    "SharedStorage-wal"
                 ]
                 
                 identity_count = 0
@@ -448,7 +517,21 @@ class QoderResetGUI(QMainWindow):
                     if file_path.exists():
                         identity_count += 1
                 
-                self.log(f"   ✅ 发现 {identity_count}/{len(identity_files)} 个身份识别文件")
+                # 检查 Network 目录中的身份文件
+                network_dir = qoder_support_dir / "Network"
+                network_identity_files = [
+                    "Cookies", "Network Persistent State", "Trust Tokens", 
+                    "TransportSecurity", "NetworkDataMigrated"
+                ]
+                network_count = 0
+                if network_dir.exists():
+                    for network_file in network_identity_files:
+                        file_path = network_dir / network_file
+                        if file_path.exists():
+                            network_count += 1
+                
+                self.log(f"   ✅ 发现 {identity_count}/{len(identity_files)} 个根目录身份文件")
+                self.log(f"   ✅ 发现 {network_count}/{len(network_identity_files)} 个网络身份文件")
                 
                 # 8. 检查 SharedClientCache 内部文件
                 self.log("8. 检查 SharedClientCache 内部文件...")
@@ -481,15 +564,7 @@ class QoderResetGUI(QMainWindow):
     
     def check_qoder_running(self):
         """检查Qoder是否正在运行"""
-        try:
-            result = subprocess.run(['pgrep', '-f', 'Qoder'],
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                pids = result.stdout.strip().split('\n')
-                return True, pids
-        except:
-            pass
-        return False, []
+        return check_process_running('Qoder')
 
     def close_qoder(self):
         """关闭Qoder"""
@@ -547,8 +622,7 @@ class QoderResetGUI(QMainWindow):
             return
 
         try:
-            home_dir = Path.home()
-            qoder_support_dir = home_dir / "Library/Application Support/Qoder"
+            qoder_support_dir = get_qoder_data_dir()
             
             if not qoder_support_dir.exists():
                 raise Exception("未找到 Qoder 应用数据目录")
@@ -582,8 +656,7 @@ class QoderResetGUI(QMainWindow):
             return
 
         try:
-            home_dir = Path.home()
-            qoder_support_dir = home_dir / "Library/Application Support/Qoder"
+            qoder_support_dir = get_qoder_data_dir()
             machine_id_file = qoder_support_dir / "machineid"
 
             if not qoder_support_dir.exists():
@@ -615,8 +688,7 @@ class QoderResetGUI(QMainWindow):
             return
 
         try:
-            home_dir = Path.home()
-            qoder_support_dir = home_dir / "Library/Application Support/Qoder"
+            qoder_support_dir = get_qoder_data_dir()
             storage_json_file = qoder_support_dir / "User/globalStorage/storage.json"
 
             if not storage_json_file.exists():
@@ -707,8 +779,7 @@ class QoderResetGUI(QMainWindow):
 
     def perform_full_reset(self, preserve_chat=True):
         """执行完整重置"""
-        home_dir = Path.home()
-        qoder_support_dir = home_dir / "Library/Application Support/Qoder"
+        qoder_support_dir = get_qoder_data_dir()
 
         if not qoder_support_dir.exists():
             raise Exception("未找到 Qoder 应用数据目录")
@@ -768,7 +839,9 @@ class QoderResetGUI(QMainWindow):
             "SharedStorage", "SharedStorage-wal",
             "Trust Tokens", "Trust Tokens-journal",
             "TransportSecurity",
-            "Preferences"
+            "Preferences",
+            "Local State",  # 包含加密密钥，极其重要！
+            "NetworkDataMigrated"  # 网络数据迁移标记
         ]
         
         identity_cleaned = 0
@@ -782,13 +855,37 @@ class QoderResetGUI(QMainWindow):
                 except Exception as e:
                     self.log(f"   清除失败 {identity_file}: {e}")
         
+        # 专门处理 Network 目录中的文件
+        network_dir = qoder_support_dir / "Network"
+        if network_dir.exists():
+            network_files = [
+                "Cookies", "Cookies-journal", 
+                "Network Persistent State",
+                "NetworkDataMigrated",
+                "TransportSecurity",
+                "Trust Tokens", "Trust Tokens-journal"
+            ]
+            for network_file in network_files:
+                file_path = network_dir / network_file
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                        self.log(f"   已清除: Network/{network_file}")
+                        identity_cleaned += 1
+                    except Exception as e:
+                        self.log(f"   清除失败 Network/{network_file}: {e}")
+        
         # 5. 清理存储目录
         storage_dirs = [
             "Local Storage",
             "Session Storage", 
             "WebStorage",
             "Shared Dictionary",
-            "Service Worker"
+            "Service Worker",
+            "clp",  # 剪贴板数据，可能包含敏感信息
+            "logs",  # 日志文件，可能记录用户活动
+            "Backups",  # 备份文件，可能包含历史身份信息
+            "CachedExtensionVSIXs"  # 扩展缓存，显示用户安装的扩展
         ]
         
         for storage_dir in storage_dirs:

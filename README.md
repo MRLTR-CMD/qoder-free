@@ -67,11 +67,13 @@
 
 ## �️ 系统要求
 
-- **操作系统**: macOS 10.14+
+- **操作系统**: macOS 10.14+ 或 Windows 10+
 - **Python**: 3.6 或更高版本
 - **依赖库**: PyQt5
 - **磁盘空间**: 至少 50MB 可用空间
-- **权限**: 对 `~/Library/Application Support/Qoder` 的读写权限
+- **权限**: 
+  - macOS: 对 `~/Library/Application Support/Qoder` 的读写权限
+  - Windows: 对 `%APPDATA%\Qoder` 的读写权限
 
 ## 📦 安装指南
 
@@ -95,9 +97,15 @@
 
 ### 方法二：使用启动脚本
 
+**macOS/Linux:**
 ```bash
 chmod +x start_gui.sh
 ./start_gui.sh
+```
+
+**Windows:**
+```cmd
+start_gui.bat
 ```
 
 
@@ -364,7 +372,7 @@ class QoderResetGUI(QMainWindow):
 2. **关闭应用**: 执行重置操作前必须完全关闭Qoder应用程序
 3. **重新登录**: 重置后需要重新登录Qoder账户
 4. **数据丢失**: 取消勾选"保留对话记录"将永久删除所有聊天历史
-5. **系统兼容**: 目前仅支持macOS系统
+- ✅ **系统兼容**: 目前支持 macOS 和 Windows 系统
 
 ## 📄 许可证
 
@@ -474,8 +482,9 @@ python3 -c "import tkinter; print('tkinter 可用')"
 
 ```
 qoder-free/
-├── qoder_reset_gui.py      # 主程序（PyQt5界面）
-├── start_gui.sh           # 启动脚本
+├── qoder_reset_gui.py      # 主程序（PyQt5界面，跨平台支持）
+├── start_gui.sh           # macOS/Linux 启动脚本
+├── start_gui.bat          # Windows 启动脚本
 └── README.md              # 完整说明文档
 ```
 
@@ -490,12 +499,22 @@ qoder-free/
 
 ### 推荐启动方式：
 
+**macOS/Linux:**
 ```bash
 # 使用启动脚本（推荐）
 ./start_gui.sh
 
 # 或直接运行
 python3 qoder_reset_gui.py
+```
+
+**Windows:**
+```cmd
+# 使用启动脚本（推荐）
+start_gui.bat
+
+# 或直接运行
+python qoder_reset_gui.py
 ```
 
 享受全新的 Qoder 使用体验！
